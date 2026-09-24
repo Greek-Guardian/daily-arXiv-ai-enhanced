@@ -8,8 +8,12 @@ on:
     - cron: "30 1 * * *"
   workflow_dispatch:
     inputs:
-      scan_date:
-        description: "要重新处理的日期（YYYY-MM-DD）；留空则扫描今天"
+      start_date:
+        description: "补跑开始日期（YYYY-MM-DD）；留空则正常扫描今天"
+        required: false
+        type: string
+      end_date:
+        description: "补跑结束日期（YYYY-MM-DD）；留空则只跑开始日期，单次最多14天"
         required: false
         type: string
 
@@ -20,6 +24,7 @@ permissions:
 
 jobs:
   build:
+    if: ${{ github.event_name != 'workflow_dispatch' || inputs.start_date == '' }}
 
     runs-on: ubuntu-latest
 
@@ -32,28 +37,8 @@ jobs:
         
     - name: Crawl arXiv papers
       id: crawl_step
-      env:
-        REQUESTED_DATE: ${{ inputs.scan_date }}
       run: |
         source .venv/bin/activate
-        if [ -n "$REQUESTED_DATE" ]; then
-          if ! [[ "$REQUESTED_DATE" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]]; then
-            echo "日期格式错误，请使用 YYYY-MM-DD"
-            exit 1
-          fi
-          today="$REQUESTED_DATE"
-          echo "重新处理历史日期 $today"
-          mkdir -p data
-          git fetch origin data
-          if ! git show "origin/data:data/${today}.jsonl" > "data/${today}.jsonl"; then
-            echo "data 分支没有 ${today} 的原始论文数据，无法历史重跑"
-            exit 1
-          fi
-          echo "crawl_date=$today" >> "$GITHUB_OUTPUT"
-          echo "已读取历史原始数据，跳过重新抓取 arXiv"
-          exit 0
-        fi
-
         today=$(date -u "+%Y-%m-%d")
         echo "开始爬取 $today 的arXiv论文... / Starting to crawl $today arXiv papers..."
         
@@ -89,15 +74,8 @@ jobs:
         
     - name: Check for duplicates
       id: dedup_check
-      env:
-        REQUESTED_DATE: ${{ inputs.scan_date }}
       run: |
         source .venv/bin/activate
-        if [ -n "$REQUESTED_DATE" ]; then
-          echo "历史重跑模式：保留该日期全部原始论文并重新执行 AI 分析"
-          echo "has_new_content=true" >> "$GITHUB_OUTPUT"
-          exit 0
-        fi
         echo "执行去重检查... / Performing intelligent deduplication check..."
         
         cd daily_arxiv
@@ -407,3 +385,99 @@ jobs:
             fi
           fi
         done
+
+  backfill:
+    if: ${{ inputs.start_date != '' }}
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v5
+
+    - name: Install dependencies
+      run: |
+        curl -LsSf https://astral.sh/uv/install.sh | sh
+        uv sync
+
+    - name: Restore existing raw data and fetch missing dates
+      env:
+        START_DATE: ${{ inputs.start_date }}
+        END_DATE: ${{ inputs.end_date }}
+        CATEGORIES: ${{ vars.CATEGORIES }}
+      run: |
+        source .venv/bin/activate
+        end_date="${END_DATE:-$START_DATE}"
+        END_DATE_RESOLVED="$end_date" python -c 'import os; from datetime import date; from daily_arxiv.backfill import dates_between; dates_between(date.fromisoformat(os.environ["START_DATE"]), date.fromisoformat(os.environ["END_DATE_RESOLVED"]))'
+        mkdir -p data
+        git fetch origin data
+
+        current_date="$START_DATE"
+        while [ "$current_date" != "$(date -I -d "$end_date + 1 day")" ]; do
+          git show "origin/data:data/${current_date}.jsonl" > "data/${current_date}.jsonl" 2>/dev/null || rm -f "data/${current_date}.jsonl"
+          current_date=$(date -I -d "$current_date + 1 day")
+        done
+
+        python daily_arxiv/backfill.py \
+          --start-date "$START_DATE" \
+          --end-date "$end_date" \
+          --output-dir data
+
+    - name: Run AI analysis for each available date
+      env:
+        START_DATE: ${{ inputs.start_date }}
+        END_DATE: ${{ inputs.end_date }}
+        OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        OPENAI_BASE_URL: ${{ secrets.OPENAI_BASE_URL }}
+        TOKEN_GITHUB: ${{ secrets.TOKEN_GITHUB }}
+        LANGUAGE: ${{ vars.LANGUAGE }}
+        MODEL_NAME: ${{ vars.MODEL_NAME }}
+        CATEGORIES: ${{ vars.CATEGORIES }}
+      run: |
+        source .venv/bin/activate
+        end_date="${END_DATE:-$START_DATE}"
+        current_date="$START_DATE"
+        processed_dates=""
+        empty_dates=""
+
+        while [ "$current_date" != "$(date -I -d "$end_date + 1 day")" ]; do
+          raw_file="data/${current_date}.jsonl"
+          if [ -s "$raw_file" ]; then
+            echo "AI 分析：$current_date"
+            (cd ai && python enhance.py --data "../$raw_file" --max_workers 8)
+            enhanced_file="data/${current_date}_AI_enhanced_${LANGUAGE}.jsonl"
+            (cd to_md && python convert.py --data "../$enhanced_file")
+            processed_dates="$processed_dates $current_date"
+          else
+            echo "跳过无论文日期：$current_date"
+            empty_dates="$empty_dates $current_date"
+          fi
+          current_date=$(date -I -d "$current_date + 1 day")
+        done
+
+        echo "成功处理：${processed_dates:-无}"
+        echo "无论文：${empty_dates:-无}"
+
+    - name: Publish backfilled dates to data branch
+      env:
+        START_DATE: ${{ inputs.start_date }}
+        END_DATE: ${{ inputs.end_date }}
+      run: |
+        git config --global user.email "${{ vars.EMAIL }}"
+        git config --global user.name "${{ vars.NAME }}"
+        end_date="${END_DATE:-$START_DATE}"
+
+        mkdir -p /tmp/backfill-data
+        cp data/*.jsonl data/*.md /tmp/backfill-data/ 2>/dev/null || true
+        rm -f data/*.jsonl data/*.md
+        git checkout data
+        git pull origin data --rebase
+        mkdir -p data assets
+        cp /tmp/backfill-data/* data/ 2>/dev/null || true
+        find data -maxdepth 1 -type f -name '*.jsonl' -exec basename {} \; | sort > assets/file-list.txt
+
+        git add data assets/file-list.txt
+        if git diff --staged --quiet; then
+          echo "没有新的补跑结果需要提交"
+        else
+          git commit -m "backfill: ${START_DATE} to ${end_date} arXiv papers"
+          git push origin data
+        fi
