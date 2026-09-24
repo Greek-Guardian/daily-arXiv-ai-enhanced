@@ -915,7 +915,9 @@ function parseJsonlData(jsonlText, date) {
         result[primaryCategory] = [];
       }
       
-      const summary = paper.AI && paper.AI.tldr ? paper.AI.tldr : paper.summary;
+      const summary = paper.AI && (paper.AI.executive_summary || paper.AI.tldr)
+        ? (paper.AI.executive_summary || paper.AI.tldr)
+        : paper.summary;
       
       result[primaryCategory].push({
         title: paper.title,
@@ -930,6 +932,20 @@ function parseJsonlData(jsonlText, date) {
         method: paper.AI && paper.AI.method ? paper.AI.method : '',
         result: paper.AI && paper.AI.result ? paper.AI.result : '',
         conclusion: paper.AI && paper.AI.conclusion ? paper.AI.conclusion : '',
+        company: paper.AI ? paper.AI.company : null,
+        team: paper.AI ? paper.AI.team : null,
+        businessScenario: paper.AI ? paper.AI.business_scenario : null,
+        paperDomain: paper.AI && Array.isArray(paper.AI.paper_domain) ? paper.AI.paper_domain : [],
+        pipelineStage: paper.AI && Array.isArray(paper.AI.pipeline_stage) ? paper.AI.pipeline_stage : [],
+        coreProblem: paper.AI ? paper.AI.core_problem : null,
+        coreInnovations: paper.AI && Array.isArray(paper.AI.core_innovations) ? paper.AI.core_innovations : [],
+        offlineGains: paper.AI && Array.isArray(paper.AI.offline_gains) ? paper.AI.offline_gains : [],
+        onlineGains: paper.AI && Array.isArray(paper.AI.online_gains) ? paper.AI.online_gains : [],
+        modelScale: paper.AI ? paper.AI.model_scale : null,
+        trainingResources: paper.AI ? paper.AI.training_resources : null,
+        inferenceResources: paper.AI ? paper.AI.inference_resources : null,
+        architectureDetail: paper.AI ? paper.AI.architecture_detail : null,
+        evidenceLevel: paper.AI ? paper.AI.evidence_level : null,
         code_url: paper.code_url || '',
         code_stars: paper.code_stars || 0,
         code_last_update: paper.code_last_update || ''
@@ -1498,6 +1514,21 @@ function showPaperDetails(paper, paperIndex) {
   
   // 添加匹配标记
   const matchedPaperClass = paper.isMatched ? 'matched-paper-details' : '';
+
+  const hasValue = value => value !== null && value !== undefined && value !== '' &&
+    (!Array.isArray(value) || value.length > 0);
+  const chips = values => `<div class="ai-chips">${values.map(value => `<span>${value}</span>`).join('')}</div>`;
+  const field = (label, value) => hasValue(value)
+    ? `<div class="ai-field"><span class="ai-field-label">${label}</span><div>${Array.isArray(value) ? chips(value) : value}</div></div>`
+    : '';
+  const metricList = metrics => metrics.map(item => `
+    <li><strong>${item.metric}</strong>：${item.value}${item.setting ? `<span class="metric-setting">（${item.setting}）</span>` : ''}</li>
+  `).join('');
+  const evidenceLabels = {
+    A_real_production: 'A · 真实生产/线上证据',
+    B_company_offline: 'B · 公司论文/离线证据',
+    C_industry_relevant_academic: 'C · 产业相关学术研究'
+  };
   
   const modalContent = `
     <div class="paper-details ${matchedPaperClass}">
@@ -1508,6 +1539,24 @@ function showPaperDetails(paper, paperIndex) {
       
       <h3>TL;DR</h3>
       <p>${highlightedSummary}</p>
+
+      <div class="ai-field-grid">
+        ${field('公司', paper.company)}
+        ${field('团队', paper.team)}
+        ${field('业务场景', paper.businessScenario)}
+        ${field('文章领域', paper.paperDomain)}
+        ${field('所处阶段', paper.pipelineStage)}
+        ${field('证据等级', evidenceLabels[paper.evidenceLevel] || paper.evidenceLevel)}
+        ${field('模型规模', paper.modelScale)}
+        ${field('训练资源', paper.trainingResources)}
+        ${field('推理资源', paper.inferenceResources)}
+      </div>
+
+      ${hasValue(paper.coreProblem) ? `<div class="paper-section"><h4>核心解决的问题</h4><p>${paper.coreProblem}</p></div>` : ''}
+      ${hasValue(paper.coreInnovations) ? `<div class="paper-section"><h4>核心创新点</h4><ul>${paper.coreInnovations.map(value => `<li>${value}</li>`).join('')}</ul></div>` : ''}
+      ${hasValue(paper.offlineGains) ? `<div class="paper-section gain-section offline-gain"><h4>离线收益</h4><ul>${metricList(paper.offlineGains)}</ul></div>` : ''}
+      ${hasValue(paper.onlineGains) ? `<div class="paper-section gain-section online-gain"><h4>线上收益</h4><ul>${metricList(paper.onlineGains)}</ul></div>` : ''}
+      ${hasValue(paper.architectureDetail) ? `<details class="architecture-details" open><summary>核心架构详细介绍</summary><p>${paper.architectureDetail}</p></details>` : ''}
       
       <div class="paper-sections">
         ${paper.motivation ? `<div class="paper-section"><h4>Motivation</h4><p>${highlightedMotivation}</p></div>` : ''}

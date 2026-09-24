@@ -821,6 +821,84 @@ main {
   line-height: 1.6;
 }
 
+.ai-field-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin: 18px 0 22px;
+}
+
+.ai-field {
+  padding: 12px 14px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--card-bg-color) 92%, var(--primary-color) 8%);
+  line-height: 1.55;
+}
+
+.ai-field-label {
+  display: block;
+  margin-bottom: 7px;
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: .04em;
+}
+
+.ai-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.ai-chips span {
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: var(--primary-color);
+  color: white;
+  font-size: 12px;
+}
+
+.paper-section ul {
+  margin: 8px 0 0 20px;
+  line-height: 1.65;
+}
+
+.gain-section {
+  border-left: 4px solid #64748b;
+}
+
+.online-gain {
+  border-left-color: #16a34a;
+}
+
+.metric-setting {
+  color: var(--text-secondary);
+}
+
+.architecture-details {
+  margin: 16px 0;
+  padding: 14px 16px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+}
+
+.architecture-details summary {
+  cursor: pointer;
+  color: var(--primary-color);
+  font-weight: 700;
+}
+
+.architecture-details p {
+  margin: 12px 0 0;
+}
+
+@media (max-width: 640px) {
+  .ai-field-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
 .paper-modal-footer {
   display: flex;
   justify-content: space-between;

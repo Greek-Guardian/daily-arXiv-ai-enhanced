@@ -46,9 +46,8 @@ if __name__ == "__main__":
                     print(f"Skipping item '{item.get('title', 'Unknown')}' due to missing or invalid AI data")
                     continue
                 
-                # Check if all required AI fields are present
-                required_fields = ['tldr', 'motivation', 'method', 'result', 'conclusion']
-                if not all(field in ai_data for field in required_fields):
+                # Support the current structured JSON format and legacy data.
+                if not (ai_data.get('executive_summary') or ai_data.get('tldr')):
                     print(f"Skipping item '{item.get('title', 'Unknown')}' due to incomplete AI fields")
                     continue
                 
@@ -58,11 +57,14 @@ if __name__ == "__main__":
                         authors=",".join(item["authors"]),
                         summary=item["summary"],
                         url=item['abs'],
-                        tldr=ai_data.get('tldr', ''),
-                        motivation=ai_data.get('motivation', ''),
-                        method=ai_data.get('method', ''),
-                        result=ai_data.get('result', ''),
-                        conclusion=ai_data.get('conclusion', ''),
+                        tldr=ai_data.get('executive_summary', ai_data.get('tldr', '')),
+                        motivation=ai_data.get('core_problem', ai_data.get('motivation', '')),
+                        method=ai_data.get('architecture_detail', ai_data.get('method', '')),
+                        result=json.dumps({
+                            'offline_gains': ai_data.get('offline_gains', []),
+                            'online_gains': ai_data.get('online_gains', [])
+                        }, ensure_ascii=False),
+                        conclusion='；'.join(ai_data.get('core_innovations', [])) or ai_data.get('conclusion', ''),
                         cate=item['categories'][0],
                         idx=next(idx)
                     )

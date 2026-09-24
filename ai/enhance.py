@@ -44,7 +44,7 @@ def process_single_item(chain, item: Dict, language: str) -> Dict:
             resp = requests.post(
                 "https://spam.dw-dengwei.workers.dev",
                 json={"text": content},
-                timeout=5
+                timeout=2
             )
             if resp.status_code == 200:
                 result = resp.json()
@@ -53,10 +53,10 @@ def process_single_item(chain, item: Dict, language: str) -> Dict:
             else:
                 # 如果接口异常，默认不触发敏感词
                 print(f"Sensitive check failed with status {resp.status_code}", file=sys.stderr)
-                return True
+                return False
         except Exception as e:
             print(f"Sensitive check error: {e}", file=sys.stderr)
-            return True
+            return False
 
     def check_github_code(content: str) -> Dict:
         """提取并验证 GitHub 链接"""
@@ -115,15 +115,6 @@ def process_single_item(chain, item: Dict, language: str) -> Dict:
         item.update(code_info)
 
     """处理单个数据项"""
-    # Default structure with meaningful fallback values
-    default_ai_fields = {
-        "tldr": "Summary generation failed",
-        "motivation": "Motivation analysis unavailable",
-        "method": "Method extraction failed",
-        "result": "Result analysis unavailable",
-        "conclusion": "Conclusion extraction failed"
-    }
-    
     try:
         response: Structure = chain.invoke({
             "language": language,
@@ -133,7 +124,7 @@ def process_single_item(chain, item: Dict, language: str) -> Dict:
             "content": item['summary']
         })
         analysis = response.model_dump()
-        if not analysis.get("is_relevant", False):
+        if analysis.get("decision") != "keep":
             print(
                 f"Filtered out {item.get('id', 'unknown')}: "
                 f"{analysis.get('relevance_reason', 'not relevant')}",
@@ -157,24 +148,19 @@ def process_single_item(chain, item: Dict, language: str) -> Dict:
             except Exception as json_e:
                 print(f"Failed to parse JSON for {item.get('id', 'unknown')}: {json_e}", file=sys.stderr)
         
-        if not partial_data.get("is_relevant", False):
+        if partial_data.get("decision") != "keep":
             print(f"Filtered out {item.get('id', 'unknown')} after incomplete model output", file=sys.stderr)
             return None
-        item['AI'] = {**default_ai_fields, **partial_data}
+        item['AI'] = partial_data
         print(f"Using partial AI data for {item.get('id', 'unknown')}: {list(partial_data.keys())}", file=sys.stderr)
     except Exception as e:
         print(f"Unexpected error for {item.get('id', 'unknown')}: {e}", file=sys.stderr)
         return None
     
-    # Final validation to ensure all required fields exist
-    for field in default_ai_fields.keys():
-        if field not in item['AI']:
-            item['AI'][field] = default_ai_fields[field]
-
-    # 检查 AI 生成的所有字段
-    for v in item.get("AI", {}).values():
-        if is_sensitive(str(v)):
-            return None
+    # Check the generated analysis once. Calling the remote checker once per
+    # field makes the whole batch stall when that optional service is down.
+    if is_sensitive(json.dumps(item.get("AI", {}), ensure_ascii=False)):
+        return None
     return item
 
 def process_all_items(data: List[Dict], model_name: str, language: str, max_workers: int) -> List[Dict]:
@@ -184,7 +170,7 @@ def process_all_items(data: List[Dict], model_name: str, language: str, max_work
         # DeepSeek thinking mode currently rejects the forced tool choice used
         # by LangChain structured output. Classification does not need it.
         llm_options["extra_body"] = {"thinking": {"type": "disabled"}}
-    llm = ChatOpenAI(**llm_options).with_structured_output(Structure, method="function_calling")
+    llm = ChatOpenAI(**llm_options).with_structured_output(Structure, method="json_mode")
     print('Connect to:', model_name, file=sys.stderr)
     
     prompt_template = ChatPromptTemplate.from_messages([
