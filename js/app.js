@@ -964,6 +964,7 @@ function parseJsonlData(jsonlText, date) {
         conclusion: paper.AI && paper.AI.conclusion ? paper.AI.conclusion : '',
         company: paper.AI ? paper.AI.company : null,
         team: paper.AI ? paper.AI.team : null,
+        universities: paper.AI && Array.isArray(paper.AI.universities) ? paper.AI.universities : [],
         businessScenario: paper.AI ? paper.AI.business_scenario : null,
         paperDomain: paper.AI && Array.isArray(paper.AI.paper_domain) ? paper.AI.paper_domain : [],
         pipelineStage: paper.AI && Array.isArray(paper.AI.pipeline_stage) ? paper.AI.pipeline_stage : [],
@@ -1486,6 +1487,10 @@ function renderPapers() {
     
     // 格式化作者列表（应用截断规则和高亮）
     const formattedAuthors = formatAuthorsForCard(paper.authors, authorTerms);
+    const visibleUniversities = (paper.universities || []).filter(university => Number(university.tier) > 0);
+    const universityTags = visibleUniversities.slice(0, 3).map(university => `
+      <span class="paper-university tier-${university.tier}" title="${university.reason || ''}">大学：${university.name} · ${university.tier}档</span>
+    `).join('');
     
     // 构建 GitHub 按钮 HTML
     // let githubHtml = '';
@@ -1504,32 +1509,39 @@ function renderPapers() {
     //   `;
     // }
 
+    paperCard.setAttribute('role', 'button');
+    paperCard.setAttribute('tabindex', '0');
+    paperCard.setAttribute('aria-label', `查看论文详情：${paper.title}`);
     paperCard.innerHTML = `
       <div class="paper-card-index">${index + 1}</div>
       ${paper.isMatched ? '<div class="match-badge" title="匹配您的搜索条件"></div>' : ''}
       <div class="paper-card-header">
-        ${paper.importanceScore !== null ? `<div class="importance-badge score-${Math.floor(paper.importanceScore)}"><strong>${paper.importanceScore.toFixed(1)}</strong><span>${paper.importanceLabel || ''}</span></div>` : ''}
-        <h3 class="paper-card-title">${highlightedTitle}</h3>
-        <p class="paper-card-authors">${formattedAuthors}</p>
-        <div class="paper-company ${paper.company ? 'has-company' : 'no-company'}">公司：${paper.company || '无'}</div>
-        <div class="paper-card-categories">
-          ${categoryTags}
+        <div class="paper-card-heading">
+          ${paper.importanceScore !== null ? `<div class="importance-badge score-${Math.floor(paper.importanceScore)}"><strong>${paper.importanceScore.toFixed(1)}</strong><span>${paper.importanceLabel || ''}</span></div>` : ''}
+          <h3 class="paper-card-title">${highlightedTitle}</h3>
         </div>
+        <div class="paper-card-meta">
+          <span class="paper-company ${paper.company ? 'has-company' : 'no-company'}">公司：${paper.company || '无'}</span>
+          ${universityTags}
+          ${categoryTags}
+          <span class="paper-card-date">${formatDate(paper.date)}</span>
+        </div>
+        <p class="paper-card-authors">${formattedAuthors}</p>
       </div>
       <div class="paper-card-body">
         <p class="paper-card-summary">${highlightedSummary}</p>
-        <div class="paper-card-footer">
-          <div class="footer-left">
-            <span class="paper-card-date">${formatDate(paper.date)}</span>
-          </div>
-          <span class="paper-card-link">Details</span>
-        </div>
       </div>
     `;
     
     paperCard.addEventListener('click', () => {
       currentPaperIndex = index; // 记录当前点击的论文索引
       showPaperDetails(paper, index + 1);
+    });
+    paperCard.addEventListener('keydown', event => {
+      if (event.key === 'Enter' || event.key === ' ') {
+        event.preventDefault();
+        paperCard.click();
+      }
     });
     
     container.appendChild(paperCard);
@@ -1620,6 +1632,8 @@ function showPaperDetails(paper, paperIndex) {
     B_company_offline: 'B · 公司论文/离线证据',
     C_industry_relevant_academic: 'C · 产业相关学术研究'
   };
+  const visibleUniversities = (paper.universities || []).filter(university => Number(university.tier) > 0);
+  const universityDetails = visibleUniversities.map(university => `${university.name}（${university.tier}档）`);
   
   const modalContent = `
     <div class="paper-details ${matchedPaperClass}">
@@ -1634,6 +1648,7 @@ function showPaperDetails(paper, paperIndex) {
       <div class="ai-field-grid">
         ${field('公司', paper.company)}
         ${field('团队', paper.team)}
+        ${field('大学', universityDetails)}
         ${field('业务场景', paper.businessScenario)}
         ${field('文章领域', paper.paperDomain)}
         ${field('所处阶段', paper.pipelineStage)}

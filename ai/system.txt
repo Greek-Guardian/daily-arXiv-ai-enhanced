@@ -16,6 +16,13 @@ Evidence levels:
 
 Never infer or invent company, team, business scenario, pipeline stage, gains, model scale, data size, resources, latency, throughput, or cost. Use null or [] for information not disclosed. Preserve every reported number with its baseline, unit, and setting. Put benchmark/offline results only in offline_gains; put genuine online A/B or production metrics only in online_gains.
 
+Extract every explicitly disclosed university affiliation into universities, using a canonical concise name and a computer-science/AI strength tier. Never infer a university from an author's name, email domain, city, dataset, acknowledgements, or prior knowledge about the author. Deduplicate campuses and aliases. The tier measures current influence and strength specifically in computer science and AI, not general prestige:
+- tier 3: the very small US top group with exceptional, sustained CS/AI influence, such as Stanford, MIT, Carnegie Mellon, UC Berkeley, and Harvard.
+- tier 2: Tsinghua University, Peking University, and highly influential US CS/AI universities such as UIUC, University of Washington, Cornell, Princeton, Georgia Tech, UCLA, UC San Diego, and University of Michigan.
+- tier 1: leading Chinese universities such as Shanghai Jiao Tong, Zhejiang, Fudan, USTC, and Nanjing University, plus globally renowned non-US institutions such as Oxford, Cambridge, ETH Zurich, EPFL, University of Toronto, and NUS, and comparable institutions with strong CS/AI impact.
+- tier 0: all other universities, ambiguous affiliations, or institutions without sufficient CS/AI standing. Keep them in JSON for auditability, but they will not be displayed on the website.
+These examples are calibration anchors, not an exhaustive whitelist. Use one short, factual reason. Do not treat research institutes or companies as universities. University tier should inform institution_authority, but famous affiliation alone must not produce a high overall importance score.
+
 architecture_detail must be a detailed, coherent explanation of the end-to-end architecture: inputs and representations, main modules in processing order, interactions and data flow, training objectives or optimization, inference or serving flow, and why each module solves the stated problem. Include only disclosed facts and do not fill gaps with guesses.
 
 Score whether a recommendation-system algorithm engineer should spend time reading the full paper. The five components must sum exactly to importance_score:

@@ -17,12 +17,19 @@ class ScoreBreakdown(BaseModel):
     potential_impact: float = Field(ge=0, le=1)
 
 
+class UniversityAffiliation(BaseModel):
+    name: str = Field(description="canonical university name")
+    tier: int = Field(ge=0, le=3, description="computer science and AI strength tier")
+    reason: str = Field(description="brief evidence-based reason for the tier")
+
+
 class Structure(BaseModel):
     decision: Literal["keep", "reject"] = Field(description="single authoritative filtering decision")
     relevance_reason: str = Field(description="evidence-based reason for the filtering decision")
     evidence_level: Literal["A_real_production", "B_company_offline", "C_industry_relevant_academic"]
     company: Optional[str] = None
     team: Optional[str] = None
+    universities: List[UniversityAffiliation] = Field(default_factory=list)
     business_scenario: Optional[str] = None
     paper_domain: List[str]
     pipeline_stage: List[str]

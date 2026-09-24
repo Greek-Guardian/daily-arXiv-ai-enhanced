@@ -5,6 +5,7 @@ relevance_reason: evidence for that decision
 evidence_level: A_real_production, B_company_offline, or C_industry_relevant_academic
 company: disclosed company or null
 team: disclosed team or null
+universities: array of {{name, tier, reason}} for explicitly disclosed universities; use [] when absent
 business_scenario: concrete business or product scenario, or null
 paper_domain: array of domains
 pipeline_stage: array of pipeline stages

@@ -596,9 +596,9 @@ main {
 /* 论文容器 - 网格视图 */
 .paper-container {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
-  gap: 30px;
-  margin-top: 24px;
+  grid-template-columns: repeat(auto-fill, minmax(390px, 1fr));
+  gap: 14px;
+  margin-top: 16px;
   align-items: flex-start;
 }
 
@@ -618,7 +618,7 @@ main {
   transition: var(--transition);
   cursor: pointer;
   height: auto;
-  min-height: 100%;
+  min-height: 0;
   display: flex;
   flex-direction: column;
   position: relative;
@@ -630,24 +630,34 @@ main {
   background-color: var(--background-light);
 }
 
+.paper-card:focus-visible {
+  outline: 3px solid rgba(102, 126, 234, 0.38);
+  outline-offset: 3px;
+}
+
 .paper-card-header {
-  padding: 16px;
-  border-bottom: 1px solid var(--border-color);
+  padding: 14px 14px 8px;
+}
+
+.paper-card-heading {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
 }
 
 .paper-card-title {
   font-size: 16px;
   font-weight: 600;
-  margin-bottom: 12px;
-  line-height: 1.5;
+  margin: 1px 0 0;
+  line-height: 1.4;
   overflow: visible;
 }
 
 .paper-card-authors {
   font-size: 14px;
   color: var(--text-secondary);
-  margin-bottom: 12px;
-  line-height: 1.4;
+  margin: 7px 0 0;
+  line-height: 1.35;
   overflow: visible;
 }
 
@@ -673,6 +683,18 @@ main {
   margin-bottom: 6px;
 }
 
+.paper-card-meta {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin-top: 8px;
+}
+
+.paper-card-meta .category-tag {
+  display: inline-flex;
+}
+
 .category-tag {
   font-size: 12px;
   padding: 2px 8px;
@@ -683,7 +705,7 @@ main {
 }
 
 .paper-card-body {
-  padding: 20px;
+  padding: 0 14px 14px;
   flex-grow: 1;
   display: flex;
   flex-direction: column;
@@ -694,11 +716,10 @@ main {
   color: var(--text-secondary);
   line-height: 1.5;
   overflow: visible;
-  margin-bottom: 20px;
+  margin: 0;
   border-left: 3px solid var(--primary-color);
-  padding-left: 12px;
   background-color: rgba(102, 126, 234, 0.05);
-  padding: 12px;
+  padding: 9px 10px;
   border-radius: 6px;
 }
 
@@ -716,11 +737,31 @@ main {
 .paper-company {
   display: inline-flex;
   width: fit-content;
-  margin: 8px 0 4px;
-  padding: 4px 10px;
+  margin: 0;
+  padding: 3px 8px;
   border-radius: 999px;
   font-size: 12px;
   font-weight: 700;
+}
+
+.paper-university {
+  display: inline-flex;
+  padding: 3px 8px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+  color: #334155;
+  background: #e2e8f0;
+}
+
+.paper-university.tier-2 {
+  color: #1e3a8a;
+  background: #dbeafe;
+}
+
+.paper-university.tier-3 {
+  color: #581c87;
+  background: #f3e8ff;
 }
 
 .paper-company.has-company {
@@ -738,7 +779,8 @@ main {
   align-items: baseline;
   gap: 7px;
   width: fit-content;
-  margin-bottom: 10px;
+  flex: 0 0 auto;
+  margin: 0;
   padding: 5px 10px;
   border-radius: 10px;
   color: #7c2d12;
@@ -795,22 +837,10 @@ main {
   text-decoration: none;
 }
 
-.paper-card-footer {
-  margin-top: auto;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
-
 .paper-card-date {
   font-size: 12px;
   color: var(--text-tertiary);
-}
-
-.paper-card-link {
-  font-size: 14px;
-  color: var(--primary-color);
-  font-weight: 500;
+  padding: 3px 5px;
 }
 
 /* 论文卡片 - 列表视图 */
@@ -1443,6 +1473,7 @@ input:checked + .toggle-slider:before {
   .paper-container {
     padding: 0;
     margin-top: 16px;
+    grid-template-columns: minmax(0, 1fr);
   }
   
   .keyword-tag-container {
