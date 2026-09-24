@@ -9,11 +9,14 @@ import re
 import sys
 import time
 import xml.etree.ElementTree as ET
+from concurrent.futures import ThreadPoolExecutor
 from datetime import date, timedelta
 from pathlib import Path
 from urllib.parse import quote, urlencode
 from urllib.request import Request, urlopen
 from urllib.error import HTTPError, URLError
+
+from lxml import html
 
 
 ATOM = "{http://www.w3.org/2005/Atom}"
@@ -22,6 +25,10 @@ OPENSEARCH = "{http://a9.com/-/spec/opensearch/1.1/}"
 API_URL = "https://export.arxiv.org/api/query"
 PAGE_SIZE = 500
 MAX_RANGE_DAYS = 14
+USER_AGENT = (
+    "daily-arxiv-ai-enhanced/1.0 "
+    "(https://github.com/Greek-Guardian/daily-arXiv-ai-enhanced)"
+)
 
 
 def parse_args() -> argparse.Namespace:
@@ -54,6 +61,20 @@ def entry_to_paper(entry: ET.Element) -> dict:
         link.attrib.get("title", link.attrib.get("rel", "")): link.attrib.get("href", "")
         for link in entry.findall(f"{ATOM}link")
     }
+
+
+def read_url(url: str) -> bytes:
+    """Read an arXiv page with retries for transient throttling."""
+    request = Request(url, headers={"User-Agent": USER_AGENT})
+    for attempt in range(3):
+        try:
+            with urlopen(request, timeout=60) as response:
+                return response.read()
+        except (HTTPError, URLError, TimeoutError):
+            if attempt == 2:
+                raise
+            time.sleep(3 * (attempt + 1))
+    raise RuntimeError("unreachable")
     return {
         "id": paper_id,
         "pdf": links.get("pdf", f"https://arxiv.org/pdf/{paper_id}"),
@@ -85,28 +106,7 @@ def fetch_day(target: date, categories: list[str]) -> list[dict]:
         # export.arxiv.org rejects query strings where spaces are encoded as
         # '+'. Force RFC 3986 '%20' encoding instead of requests' default.
         request_url = f"{API_URL}?{urlencode(params, quote_via=quote)}"
-        request = Request(
-            request_url,
-            headers={
-                "User-Agent": (
-                    "daily-arxiv-ai-enhanced/1.0 "
-                    "(mailto:Greek-Guardian@users.noreply.github.com)"
-                )
-            },
-        )
-        last_error: Exception | None = None
-        for attempt in range(3):
-            try:
-                with urlopen(request, timeout=60) as response:
-                    root = ET.fromstring(response.read())
-                break
-            except (HTTPError, URLError, TimeoutError) as exc:
-                last_error = exc
-                if attempt == 2:
-                    raise
-                time.sleep(3 * (attempt + 1))
-        else:  # pragma: no cover - defensive; the loop either breaks or raises.
-            raise RuntimeError(f"arXiv API request failed: {last_error}")
+        root = ET.fromstring(read_url(request_url))
         entries = root.findall(f"{ATOM}entry")
         total = int(root.findtext(f"{OPENSEARCH}totalResults", default="0"))
         for entry in entries:
@@ -118,6 +118,135 @@ def fetch_day(target: date, categories: list[str]) -> list[dict]:
         time.sleep(3)
 
     return list(papers.values())
+
+
+def metadata_from_abstract(paper_id: str) -> tuple[date, dict]:
+    tree = html.fromstring(read_url(f"https://arxiv.org/abs/{paper_id}"))
+
+    def meta(name: str) -> str:
+        values = tree.xpath(f'//meta[@name="{name}"]/@content')
+        return " ".join(values[0].split()) if values else ""
+
+    submitted = date.fromisoformat(meta("citation_date").replace("/", "-"))
+    subjects = " ".join(tree.cssselect("td.tablecell.subjects")[0].itertext()) if tree.cssselect("td.tablecell.subjects") else ""
+    comments = " ".join(tree.cssselect("td.tablecell.comments")[0].itertext()) if tree.cssselect("td.tablecell.comments") else ""
+    return submitted, {
+        "id": paper_id,
+        "pdf": meta("citation_pdf_url") or f"https://arxiv.org/pdf/{paper_id}",
+        "abs": f"https://arxiv.org/abs/{paper_id}",
+        "authors": tree.xpath('//meta[@name="citation_author"]/@content'),
+        "title": meta("citation_title"),
+        "categories": re.findall(r"\(([^)]+)\)", subjects),
+        "comment": " ".join(comments.split()),
+        "summary": meta("citation_abstract"),
+    }
+
+
+def monthly_ids(category: str, target: date) -> list[str]:
+    result: list[str] = []
+    seen: set[str] = set()
+    skip = 0
+    page_size = 2000
+    while True:
+        url = f"https://arxiv.org/list/{category}/{target:%Y-%m}?skip={skip}&show={page_size}"
+        tree = html.fromstring(read_url(url))
+        page_ids = [
+            href.rsplit("/", 1)[-1]
+            for href in tree.xpath('//a[@title="Abstract"]/@href')
+        ]
+        new_ids = [paper_id for paper_id in page_ids if paper_id not in seen]
+        result.extend(new_ids)
+        seen.update(new_ids)
+        page_text = " ".join(tree.xpath("//small//text()"))
+        total_match = re.search(r"total of\s+([0-9,]+)\s+entries", page_text)
+        total = int(total_match.group(1).replace(",", "")) if total_match else len(result)
+        if not new_ids or len(result) >= total:
+            break
+        skip += len(page_ids)
+    return result
+
+
+def recent_ids(category: str, target: date) -> tuple[bool, list[str]]:
+    """Return IDs from the dated sections of arXiv's past-week page."""
+    url = f"https://arxiv.org/list/{category}/pastweek?show=2000"
+    tree = html.fromstring(read_url(url))
+    expected = target.strftime("%a, %d %b %Y")
+    for heading in tree.xpath("//h3"):
+        heading_text = " ".join(" ".join(heading.itertext()).split())
+        if heading_text.startswith(expected):
+            ids: list[str] = []
+            sibling = heading.getnext()
+            while sibling is not None and sibling.tag.lower() != "h3":
+                if sibling.tag.lower() == "dt":
+                    ids.extend(
+                        href.rsplit("/", 1)[-1]
+                        for href in sibling.xpath('.//a[@title="Abstract"]/@href')
+                    )
+                sibling = sibling.getnext()
+            return True, ids
+    return False, []
+
+
+def fetch_day_from_html(target: date, categories: list[str]) -> list[dict]:
+    """Fallback for CI networks rejected by export.arxiv.org."""
+    recent_matches: list[str] = []
+    recent_page_has_target = False
+    for category in categories:
+        found, ids = recent_ids(category, target)
+        recent_page_has_target = recent_page_has_target or found
+        recent_matches.extend(ids)
+
+    if recent_page_has_target:
+        unique_ids = list(dict.fromkeys(recent_matches))
+        print(f"网页兜底：pastweek 日期分组定位到 {len(unique_ids)} 篇当日候选")
+        with ThreadPoolExecutor(max_workers=8) as executor:
+            records = list(executor.map(metadata_from_abstract, unique_ids))
+        # The dated heading is the arXiv announcement date used by this site's
+        # daily files; individual papers were usually submitted the day before.
+        return [
+            paper
+            for _, paper in records
+            if paper.get("categories") and paper["categories"][0] in categories
+        ]
+
+    metadata_cache: dict[str, tuple[date, dict]] = {}
+    selected_ids: list[str] = []
+
+    def record(paper_id: str) -> tuple[date, dict]:
+        if paper_id not in metadata_cache:
+            metadata_cache[paper_id] = metadata_from_abstract(paper_id)
+        return metadata_cache[paper_id]
+
+    def first_index(ids: list[str], predicate) -> int:
+        low, high = 0, len(ids)
+        while low < high:
+            middle = (low + high) // 2
+            if predicate(record(ids[middle])[0]):
+                high = middle
+            else:
+                low = middle + 1
+        return low
+
+    for category in categories:
+        ids = monthly_ids(category, target)
+        if not ids:
+            continue
+        # Monthly lists are oldest-first. Two binary searches isolate the
+        # contiguous block submitted on the requested date.
+        start = first_index(ids, lambda submitted: submitted >= target)
+        end = first_index(ids, lambda submitted: submitted > target)
+        selected_ids.extend(ids[start:end])
+
+    unique_ids = list(dict.fromkeys(selected_ids))
+    if not unique_ids:
+        return []
+
+    print(f"网页兜底：定位到 {len(unique_ids)} 篇当日候选")
+    missing_ids = [paper_id for paper_id in unique_ids if paper_id not in metadata_cache]
+    with ThreadPoolExecutor(max_workers=8) as executor:
+        fetched = list(executor.map(metadata_from_abstract, missing_ids))
+    metadata_cache.update(zip(missing_ids, fetched))
+    return [metadata_cache[paper_id][1] for paper_id in unique_ids if metadata_cache[paper_id][0] == target]
 
 
 def main() -> int:
@@ -150,7 +279,11 @@ def main() -> int:
             continue
         try:
             print(f"从 arXiv API 回抓 {target.isoformat()}：{', '.join(categories)}")
-            papers = fetch_day(target, categories)
+            try:
+                papers = fetch_day(target, categories)
+            except Exception as api_exc:
+                print(f"arXiv API 不可用（{api_exc}），改用官方网页回抓")
+                papers = fetch_day_from_html(target, categories)
             if not papers:
                 empty.append(target.isoformat())
                 print(f"{target.isoformat()} 没有匹配论文")
