@@ -151,6 +151,18 @@
                         <option value="__company__">仅公司论文</option>
                         <option value="__none__">公司：无</option>
                     </select>
+                    <select id="importanceSort" class="company-filter" aria-label="按重要性排序">
+                        <option value="desc">重要性：高到低</option>
+                        <option value="asc">重要性：低到高</option>
+                        <option value="original">原始顺序</option>
+                    </select>
+                    <select id="importanceMinimum" class="company-filter" aria-label="最低重要性分数">
+                        <option value="0">全部分数</option>
+                        <option value="5.1">5.1+ 可选阅读</option>
+                        <option value="6.5">6.5+ 值得浏览</option>
+                        <option value="8">8.0+ 强烈推荐</option>
+                        <option value="9">9.0+ 必读</option>
+                    </select>
                     <div class="filter-scroll" id="filterTags">
                         <!-- Authors and Keywords will be dynamically added here -->
                     </div>

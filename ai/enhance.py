@@ -8,6 +8,7 @@ from queue import Queue
 from threading import Lock
 # INSERT_YOUR_CODE
 import requests
+from lxml import html
 
 import dotenv
 import argparse
@@ -35,6 +36,28 @@ def parse_args():
     return parser.parse_args()
 
 def process_single_item(chain, item: Dict, language: str) -> Dict:
+    def enrich_affiliations() -> None:
+        if item.get("affiliations"):
+            return
+        paper_id = item.get("id")
+        if not paper_id:
+            item["affiliations"] = []
+            return
+        try:
+            response = requests.get(f"https://arxiv.org/html/{paper_id}", timeout=6)
+            response.raise_for_status()
+            tree = html.fromstring(response.content)
+            institutions = tree.xpath(
+                "//*[contains(concat(' ', normalize-space(@class), ' '), ' ltx_role_affiliation ')]"
+                "//*[contains(concat(' ', normalize-space(@class), ' '), ' ltx_affiliation_institution ')]//text()"
+            )
+            item["affiliations"] = list(dict.fromkeys(
+                value.strip() for value in institutions if value.strip()
+            ))
+        except Exception as exc:
+            print(f"Affiliation lookup failed for {paper_id}: {exc}", file=sys.stderr)
+            item["affiliations"] = []
+
     def is_sensitive(content: str) -> bool:
         """
         调用 spam.dw-dengwei.workers.dev 接口检测内容是否包含敏感词。
@@ -109,6 +132,8 @@ def process_single_item(chain, item: Dict, language: str) -> Dict:
     if is_sensitive(item.get("summary", "")):
         return None
 
+    enrich_affiliations()
+
     # 检测代码可用性
     code_info = check_github_code(item.get("summary", ""))
     if code_info:
@@ -121,9 +146,21 @@ def process_single_item(chain, item: Dict, language: str) -> Dict:
             "title": item.get("title", ""),
             "authors": ", ".join(item.get("authors", [])),
             "categories": ", ".join(item.get("categories", [])),
+            "affiliations": ", ".join(item.get("affiliations", [])) or "Not disclosed",
             "content": item['summary']
         })
         analysis = response.model_dump()
+        breakdown = analysis.get("score_breakdown", {})
+        if breakdown:
+            score = round(sum(float(value) for value in breakdown.values()), 1)
+            analysis["importance_score"] = score
+            analysis["importance_label"] = (
+                "必看" if score >= 9 else
+                "强烈推荐" if score >= 8 else
+                "值得浏览" if score >= 6.5 else
+                "可选阅读" if score > 5 else
+                "不建议"
+            )
         if analysis.get("decision") != "keep":
             print(
                 f"Filtered out {item.get('id', 'unknown')}: "

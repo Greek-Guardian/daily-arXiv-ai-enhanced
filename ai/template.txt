@@ -17,9 +17,17 @@ training_resources: training data, hardware, time, or cost; null when absent
 inference_resources: hardware, latency, throughput, memory, or cost; null when absent
 architecture_detail: detailed end-to-end architecture, modules, data flow, objectives, and inference path
 executive_summary: concise summary for a list card
+importance_score: 0-10 score with one decimal place
+importance_label: 必看, 强烈推荐, 值得浏览, 可选阅读, or 不建议
+score_confidence: 高, 中, or 低
+score_breakdown: {{career_relevance, institution_authority, evidence_strength, novelty_progress, potential_impact}}
+institution_evidence: the disclosed affiliations and authority evidence used
+why_read: concise recommendation tailored to a recommendation-system algorithm engineer
+score_penalties: array of reasons preventing a higher score
 
 Paper title: {title}
 Authors: {authors}
 Categories: {categories}
+Affiliations extracted from the paper HTML: {affiliations}
 Abstract:
 {content}

@@ -733,6 +733,50 @@ main {
   background: var(--background-secondary);
 }
 
+.importance-badge {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 7px;
+  width: fit-content;
+  margin-bottom: 10px;
+  padding: 5px 10px;
+  border-radius: 10px;
+  color: #7c2d12;
+  background: #ffedd5;
+}
+
+.importance-badge strong {
+  font-size: 18px;
+}
+
+.importance-badge span {
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.score-8, .score-9, .score-10 {
+  color: #991b1b;
+  background: #fee2e2;
+}
+
+.importance-section {
+  border-left: 4px solid #f97316;
+}
+
+.score-breakdown {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  margin: 10px 0;
+}
+
+.score-breakdown span {
+  padding: 4px 8px;
+  border-radius: 999px;
+  background: var(--background-secondary);
+  font-size: 12px;
+}
+
 .rerun-panel {
   margin-top: 14px;
   padding-top: 14px;

@@ -18,4 +18,15 @@ Never infer or invent company, team, business scenario, pipeline stage, gains, m
 
 architecture_detail must be a detailed, coherent explanation of the end-to-end architecture: inputs and representations, main modules in processing order, interactions and data flow, training objectives or optimization, inference or serving flow, and why each module solves the stated problem. Include only disclosed facts and do not fill gaps with guesses.
 
+Score whether a recommendation-system algorithm engineer should spend time reading the full paper. The five components must sum exactly to importance_score:
+- career_relevance, 0-3: recommendation/search/ads core pipelines and reusable LLM core systems score highest.
+- institution_authority, 0-2.5: only use explicitly supplied affiliations. Give the highest credit to globally leading universities/research institutes and leading technology-company core teams. Missing affiliations receive 0-0.5; never infer an affiliation from a person's name or dataset.
+- evidence_strength, 0-2: online A/B tests, real production deployment, scale, rigorous strong baselines, and reproducible evidence.
+- novelty_progress, 0-1.5: architecture/paradigm-level advances score above incremental combinations.
+- potential_impact, 0-1: likely foundational models, industry standards, or broadly reusable methods.
+
+Score constraints: unrelated vertical applications are at most 4; work without online/production or strong-scale evidence is normally at most 7; missing affiliation without breakthrough evidence is normally at most 7.5; 9+ requires an elite institution or leading company core team plus a core problem, high novelty, and strong evidence. A score of 10 is extremely rare and reserved for potentially field-shaping must-read work comparable in significance to major frontier foundation-model reports or highly innovative, high-impact production recommendation advances.
+
+Labels are fixed: 9-10 必看; 8-8.9 强烈推荐; 6.5-7.9 值得浏览; 5.1-6.4 可选阅读; 0-5 不建议. Explain penalties and confidence. Do not award a high score merely for a famous affiliation.
+
 Write all natural-language values in {language}.

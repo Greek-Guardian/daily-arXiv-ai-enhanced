@@ -10,6 +10,8 @@ let paperData = {};
 let flatpickrInstance = null;
 let isRangeMode = true;
 let activeCompany = 'all';
+let importanceSort = 'desc';
+let minimumImportance = 0;
 let activeKeywords = []; // 存储激活的关键词
 let userKeywords = []; // 存储用户的关键词
 let activeAuthors = []; // 存储激活的作者
@@ -433,6 +435,20 @@ function initEventListeners() {
   if (companyFilter) {
     companyFilter.addEventListener('change', event => {
       activeCompany = event.target.value;
+      renderPapers();
+    });
+  }
+  const importanceSortSelect = document.getElementById('importanceSort');
+  if (importanceSortSelect) {
+    importanceSortSelect.addEventListener('change', event => {
+      importanceSort = event.target.value;
+      renderPapers();
+    });
+  }
+  const importanceMinimumSelect = document.getElementById('importanceMinimum');
+  if (importanceMinimumSelect) {
+    importanceMinimumSelect.addEventListener('change', event => {
+      minimumImportance = Number(event.target.value) || 0;
       renderPapers();
     });
   }
@@ -960,6 +976,14 @@ function parseJsonlData(jsonlText, date) {
         inferenceResources: paper.AI ? paper.AI.inference_resources : null,
         architectureDetail: paper.AI ? paper.AI.architecture_detail : null,
         evidenceLevel: paper.AI ? paper.AI.evidence_level : null,
+        affiliations: Array.isArray(paper.affiliations) ? paper.affiliations : [],
+        importanceScore: paper.AI && Number.isFinite(Number(paper.AI.importance_score)) ? Number(paper.AI.importance_score) : null,
+        importanceLabel: paper.AI ? paper.AI.importance_label : null,
+        scoreConfidence: paper.AI ? paper.AI.score_confidence : null,
+        scoreBreakdown: paper.AI ? paper.AI.score_breakdown : null,
+        institutionEvidence: paper.AI ? paper.AI.institution_evidence : null,
+        whyRead: paper.AI ? paper.AI.why_read : null,
+        scorePenalties: paper.AI && Array.isArray(paper.AI.score_penalties) ? paper.AI.score_penalties : [],
         code_url: paper.code_url || '',
         code_stars: paper.code_stars || 0,
         code_last_update: paper.code_last_update || ''
@@ -1172,6 +1196,18 @@ function renderPapers() {
     filteredPapers = filteredPapers.filter(paper => !paper.company);
   } else if (activeCompany !== 'all') {
     filteredPapers = filteredPapers.filter(paper => paper.company === activeCompany);
+  }
+
+  filteredPapers = filteredPapers.filter(paper =>
+    minimumImportance === 0 || (paper.importanceScore !== null && paper.importanceScore >= minimumImportance)
+  );
+
+  if (importanceSort !== 'original') {
+    filteredPapers.sort((a, b) => {
+      const aScore = a.importanceScore === null ? -1 : a.importanceScore;
+      const bScore = b.importanceScore === null ? -1 : b.importanceScore;
+      return importanceSort === 'asc' ? aScore - bScore : bScore - aScore;
+    });
   }
 
   // 重置所有论文的匹配状态，避免上次渲染的残留
@@ -1390,6 +1426,15 @@ function renderPapers() {
     });
   }
   
+  // The explicit importance order is authoritative after search/tag sorting.
+  if (importanceSort !== 'original') {
+    filteredPapers.sort((a, b) => {
+      const aScore = a.importanceScore === null ? -1 : a.importanceScore;
+      const bScore = b.importanceScore === null ? -1 : b.importanceScore;
+      return importanceSort === 'asc' ? aScore - bScore : bScore - aScore;
+    });
+  }
+
   // 存储当前过滤后的论文列表，用于箭头键导航
   currentFilteredPapers = [...filteredPapers];
   
@@ -1463,6 +1508,7 @@ function renderPapers() {
       <div class="paper-card-index">${index + 1}</div>
       ${paper.isMatched ? '<div class="match-badge" title="匹配您的搜索条件"></div>' : ''}
       <div class="paper-card-header">
+        ${paper.importanceScore !== null ? `<div class="importance-badge score-${Math.floor(paper.importanceScore)}"><strong>${paper.importanceScore.toFixed(1)}</strong><span>${paper.importanceLabel || ''}</span></div>` : ''}
         <h3 class="paper-card-title">${highlightedTitle}</h3>
         <p class="paper-card-authors">${formattedAuthors}</p>
         <div class="paper-company ${paper.company ? 'has-company' : 'no-company'}">公司：${paper.company || '无'}</div>
@@ -1592,12 +1638,14 @@ function showPaperDetails(paper, paperIndex) {
         ${field('文章领域', paper.paperDomain)}
         ${field('所处阶段', paper.pipelineStage)}
         ${field('证据等级', evidenceLabels[paper.evidenceLevel] || paper.evidenceLevel)}
+        ${field('作者单位', paper.affiliations)}
         ${field('模型规模', paper.modelScale)}
         ${field('训练资源', paper.trainingResources)}
         ${field('推理资源', paper.inferenceResources)}
       </div>
 
       ${hasValue(paper.coreProblem) ? `<div class="paper-section"><h4>核心解决的问题</h4><p>${paper.coreProblem}</p></div>` : ''}
+      ${paper.importanceScore !== null ? `<div class="paper-section importance-section"><h4>阅读重要性：${paper.importanceScore.toFixed(1)} / 10 · ${paper.importanceLabel}</h4><p>${paper.whyRead || ''}</p>${paper.scoreBreakdown ? `<div class="score-breakdown"><span>相关性 ${paper.scoreBreakdown.career_relevance}/3</span><span>机构 ${paper.scoreBreakdown.institution_authority}/2.5</span><span>证据 ${paper.scoreBreakdown.evidence_strength}/2</span><span>创新 ${paper.scoreBreakdown.novelty_progress}/1.5</span><span>影响 ${paper.scoreBreakdown.potential_impact}/1</span></div>` : ''}${hasValue(paper.institutionEvidence) ? `<p><strong>机构依据：</strong>${paper.institutionEvidence}</p>` : ''}${hasValue(paper.scorePenalties) ? `<p><strong>扣分项：</strong>${paper.scorePenalties.join('；')}</p>` : ''}</div>` : ''}
       ${hasValue(paper.coreInnovations) ? `<div class="paper-section"><h4>核心创新点</h4><ul>${paper.coreInnovations.map(value => `<li>${value}</li>`).join('')}</ul></div>` : ''}
       ${hasValue(paper.offlineGains) ? `<div class="paper-section gain-section offline-gain"><h4>离线收益</h4><ul>${metricList(paper.offlineGains)}</ul></div>` : ''}
       ${hasValue(paper.onlineGains) ? `<div class="paper-section gain-section online-gain"><h4>线上收益</h4><ul>${metricList(paper.onlineGains)}</ul></div>` : ''}
