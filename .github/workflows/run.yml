@@ -468,7 +468,7 @@ jobs:
         mkdir -p /tmp/backfill-data
         cp data/*.jsonl data/*.md /tmp/backfill-data/ 2>/dev/null || true
         rm -f data/*.jsonl data/*.md
-        git checkout data
+        git checkout -B data origin/data
         git pull origin data --rebase
         mkdir -p data assets
         cp /tmp/backfill-data/* data/ 2>/dev/null || true
