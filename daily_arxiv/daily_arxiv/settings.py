@@ -64,10 +64,9 @@ ROBOTSTXT_OBEY = True
 # See https://docs.scrapy.org/en/latest/topics/item-pipeline.html
 # 配置数据处理管道 / Configure item processing pipelines
 # 数字越小优先级越高 / Lower numbers have higher priority
-ITEM_PIPELINES = {
-    # 主要数据保存管道 / Main data saving pipeline
-    "daily_arxiv.pipelines.DailyArxivPipeline": 300,
-}
+# Metadata is parsed directly from arxiv.org abstract pages. Avoid the legacy
+# export.arxiv.org per-paper API, which now frequently returns HTTP 406.
+ITEM_PIPELINES = {}
 
 # Enable and configure the AutoThrottle extension (disabled by default)
 # See https://docs.scrapy.org/en/latest/topics/autothrottle.html

@@ -61,17 +61,41 @@ class ArxivSpider(scrapy.Spider):
                 # 检查论文分类是否与目标分类有交集
                 paper_categories = set(categories_in_paper)
                 if paper_categories.intersection(self.target_categories):
-                    yield {
-                        "id": arxiv_id,
-                        "categories": list(paper_categories),  # 添加分类信息用于调试
-                    }
+                    yield response.follow(
+                        abstract_link,
+                        callback=self.parse_abstract,
+                        cb_kwargs={"arxiv_id": arxiv_id},
+                    )
                     self.logger.info(f"Found paper {arxiv_id} with categories {paper_categories}")
                 else:
                     self.logger.debug(f"Skipped paper {arxiv_id} with categories {paper_categories} (not in target {self.target_categories})")
             else:
                 # 如果无法获取分类信息，记录警告但仍然返回论文（保持向后兼容）
                 self.logger.warning(f"Could not extract categories for paper {arxiv_id}, including anyway")
-                yield {
-                    "id": arxiv_id,
-                    "categories": [],
-                }
+                yield response.follow(
+                    abstract_link,
+                    callback=self.parse_abstract,
+                    cb_kwargs={"arxiv_id": arxiv_id},
+                )
+
+    def parse_abstract(self, response, arxiv_id):
+        """Read metadata from the abstract page without export.arxiv.org."""
+        def clean(values):
+            return " ".join(value.strip() for value in values if value.strip())
+
+        subjects_text = clean(response.css("td.tablecell.subjects ::text").getall())
+
+        yield {
+            "id": arxiv_id,
+            "pdf": f"https://arxiv.org/pdf/{arxiv_id}",
+            "abs": response.url,
+            "authors": [
+                author.strip()
+                for author in response.css("div.authors a::text").getall()
+                if author.strip()
+            ],
+            "title": clean(response.css("h1.title ::text").getall()).removeprefix("Title:").strip(),
+            "categories": re.findall(r"\(([^)]+)\)", subjects_text),
+            "comment": clean(response.css("td.tablecell.comments ::text").getall()),
+            "summary": clean(response.css("blockquote.abstract ::text").getall()).removeprefix("Abstract:").strip(),
+        }
