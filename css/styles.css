@@ -702,6 +702,55 @@ main {
   border-radius: 6px;
 }
 
+.company-filter {
+  min-width: 140px;
+  padding: 7px 30px 7px 10px;
+  border: 1px solid var(--border-color);
+  border-radius: 999px;
+  background: var(--card-bg-color);
+  color: var(--text-primary);
+  font: inherit;
+  cursor: pointer;
+}
+
+.paper-company {
+  display: inline-flex;
+  width: fit-content;
+  margin: 8px 0 4px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.paper-company.has-company {
+  color: #166534;
+  background: #dcfce7;
+}
+
+.paper-company.no-company {
+  color: var(--text-secondary);
+  background: var(--background-secondary);
+}
+
+.rerun-panel {
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border-color);
+  text-align: center;
+}
+
+.rerun-panel p {
+  margin: 0 0 10px;
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
+.rerun-button {
+  display: inline-flex;
+  text-decoration: none;
+}
+
 .paper-card-footer {
   margin-top: auto;
   display: flex;

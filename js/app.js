@@ -8,7 +8,8 @@ let urlAuthorParam = null; // 从URL参数中获取的author
 let urlKeywordsParam = null; // 从URL参数中获取的keywords
 let paperData = {};
 let flatpickrInstance = null;
-let isRangeMode = false;
+let isRangeMode = true;
+let activeCompany = 'all';
 let activeKeywords = []; // 存储激活的关键词
 let userKeywords = []; // 存储用户的关键词
 let activeAuthors = []; // 存储激活的作者
@@ -428,6 +429,17 @@ function initEventListeners() {
   });
 
   document.getElementById('dateRangeMode').addEventListener('change', toggleRangeMode);
+  const companyFilter = document.getElementById('companyFilter');
+  if (companyFilter) {
+    companyFilter.addEventListener('change', event => {
+      activeCompany = event.target.value;
+      renderPapers();
+    });
+  }
+  const rerunButton = document.getElementById('rerunWorkflowButton');
+  if (rerunButton) {
+    rerunButton.href = `https://github.com/${DATA_CONFIG.repoOwner}/${DATA_CONFIG.repoName}/actions/workflows/run.yml`;
+  }
   
   // 其他原有的事件监听器
   document.getElementById('closeModal').addEventListener('click', closeModal);
@@ -756,6 +768,7 @@ function initDatePicker() {
     inline: true,
     dateFormat: "Y-m-d",
     defaultDate: availableDates[0],
+    mode: isRangeMode ? 'range' : 'single',
     enable: [
       function(date) {
         // 只启用有效日期
@@ -862,6 +875,7 @@ async function loadPapersByDate(date) {
     const categories = getAllCategories(paperData);
 
     renderCategoryFilter(categories);
+    renderCompanyFilter();
 
     // 如果URL中有category、json、author或keywords参数，直接返回JSON
     const hasJsonParams = urlCategoryParam !== null || urlJsonParam !== null || urlAuthorParam !== null || urlKeywordsParam !== null;
@@ -1006,6 +1020,28 @@ function renderCategoryFilter(categories) {
   });
 }
 
+function renderCompanyFilter() {
+  const select = document.getElementById('companyFilter');
+  if (!select) return;
+  const companies = new Set();
+  Object.values(paperData).flat().forEach(paper => {
+    if (paper.company) companies.add(paper.company);
+  });
+  const fixedOptions = `
+    <option value="all">全部公司</option>
+    <option value="__company__">仅公司论文</option>
+    <option value="__none__">公司：无</option>`;
+  const companyOptions = [...companies].sort((a, b) => a.localeCompare(b, 'zh-CN'))
+    .map(company => `<option value="${company}">${company}</option>`).join('');
+  select.innerHTML = fixedOptions + companyOptions;
+  if ([...select.options].some(option => option.value === activeCompany)) {
+    select.value = activeCompany;
+  } else {
+    activeCompany = 'all';
+    select.value = 'all';
+  }
+}
+
 function filterByCategory(category) {
   currentCategory = category;
 
@@ -1129,6 +1165,14 @@ function renderPapers() {
   
   // 创建匹配论文的集合
   let filteredPapers = [...papers];
+
+  if (activeCompany === '__company__') {
+    filteredPapers = filteredPapers.filter(paper => Boolean(paper.company));
+  } else if (activeCompany === '__none__') {
+    filteredPapers = filteredPapers.filter(paper => !paper.company);
+  } else if (activeCompany !== 'all') {
+    filteredPapers = filteredPapers.filter(paper => paper.company === activeCompany);
+  }
 
   // 重置所有论文的匹配状态，避免上次渲染的残留
   filteredPapers.forEach(p => {
@@ -1421,6 +1465,7 @@ function renderPapers() {
       <div class="paper-card-header">
         <h3 class="paper-card-title">${highlightedTitle}</h3>
         <p class="paper-card-authors">${formattedAuthors}</p>
+        <div class="paper-company ${paper.company ? 'has-company' : 'no-company'}">公司：${paper.company || '无'}</div>
         <div class="paper-card-categories">
           ${categoryTags}
         </div>
@@ -1776,6 +1821,7 @@ async function loadPapersByDateRange(startDate, endDate) {
     const categories = getAllCategories(paperData);
 
     renderCategoryFilter(categories);
+    renderCompanyFilter();
 
     // 如果URL中有category、json、author或keywords参数，直接返回JSON
     const hasJsonParams = urlCategoryParam !== null || urlJsonParam !== null || urlAuthorParam !== null || urlKeywordsParam !== null;

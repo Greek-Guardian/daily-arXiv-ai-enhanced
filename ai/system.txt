@@ -4,15 +4,15 @@ Return one valid JSON object matching the requested schema. The decision field i
 
 Set decision="keep" only when the supplied metadata or abstract contains concrete evidence for at least one scope:
 1. Search, advertising, or recommendation: retrieval, matching, recall, candidate generation, ranking, reranking, CTR/CVR prediction, bidding, auction, ads allocation, feed ranking, user modeling, query understanding, search relevance, or production experimentation.
-2. Industrial LLM work: a named company/team, an actual production deployment, a real product/business workflow, production-scale system evidence, or concrete serving/training/latency/cost evidence.
+2. Industrially useful LLM work: a named company/team, an actual production workflow, or a concrete training/inference/serving/system contribution with measurable efficiency, scale, latency, cost, reliability, deployment, or agent-workflow evidence. Company evidence is preferred but not mandatory; use company=null when it is absent.
 3. A company-authored technical report with clear product, deployment, efficiency, scale, or experimental relevance.
 
-Reject papers that merely use an LLM, mention production as motivation, or use a public industrial dataset without company/production evidence. Reject unrelated finance, healthcare, EDA, science, and generic agent papers unless a real company or production workflow is explicitly evidenced. When uncertain, reject.
+Reject papers that merely use an LLM, mention production as motivation, or use a public industrial dataset without a concrete contribution to search/ads/recommendation or LLM training/inference/serving systems. Reject unrelated finance, healthcare, EDA, science, and generic agent papers unless a real production workflow is explicitly evidenced. When uncertain, reject.
 
 Evidence levels:
 - A_real_production: explicit deployment, online A/B test, production traffic, product workflow, or quantified production impact.
 - B_company_offline: explicitly company-authored work with offline/system experiments but no disclosed online result.
-- C_industry_relevant_academic: directly about search/ads/recommendation, but without explicit company or production evidence.
+- C_industry_relevant_academic: directly useful for search/ads/recommendation or LLM training/inference/serving systems, but without explicit company or production evidence.
 
 Never infer or invent company, team, business scenario, pipeline stage, gains, model scale, data size, resources, latency, throughput, or cost. Use null or [] for information not disclosed. Preserve every reported number with its baseline, unit, and setting. Put benchmark/offline results only in offline_gains; put genuine online A/B or production metrics only in online_gains.
 

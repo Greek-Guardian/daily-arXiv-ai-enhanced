@@ -146,6 +146,11 @@
                             <button id="textSearchClear" class="clear-x" title="Clear" style="display: none;">×</button>
                         </div>
                     </div>
+                    <select id="companyFilter" class="company-filter" aria-label="按公司筛选">
+                        <option value="all">全部公司</option>
+                        <option value="__company__">仅公司论文</option>
+                        <option value="__none__">公司：无</option>
+                    </select>
                     <div class="filter-scroll" id="filterTags">
                         <!-- Authors and Keywords will be dynamically added here -->
                     </div>
@@ -164,9 +169,13 @@
                         <div class="date-range-selector">
                             <span class="toggle-label">Range</span>
                             <label class="toggle-switch">
-                                <input type="checkbox" id="dateRangeMode">
+                                <input type="checkbox" id="dateRangeMode" checked>
                                 <span class="toggle-slider"></span>
                             </label>
+                        </div>
+                        <div class="rerun-panel">
+                            <p>需要重新生成某一天的结果？前往 GitHub Actions，在 Run workflow 中填写日期。</p>
+                            <a id="rerunWorkflowButton" class="button rerun-button" target="_blank" rel="noopener">重跑指定日期</a>
                         </div>
                     </div>
                 </div>
