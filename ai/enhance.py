@@ -127,9 +127,20 @@ def process_single_item(chain, item: Dict, language: str) -> Dict:
     try:
         response: Structure = chain.invoke({
             "language": language,
+            "title": item.get("title", ""),
+            "authors": ", ".join(item.get("authors", [])),
+            "categories": ", ".join(item.get("categories", [])),
             "content": item['summary']
         })
-        item['AI'] = response.model_dump()
+        analysis = response.model_dump()
+        if not analysis.get("is_relevant", False):
+            print(
+                f"Filtered out {item.get('id', 'unknown')}: "
+                f"{analysis.get('relevance_reason', 'not relevant')}",
+                file=sys.stderr,
+            )
+            return None
+        item['AI'] = analysis
     except langchain_core.exceptions.OutputParserException as e:
         # 尝试从错误信息中提取 JSON 字符串并修复
         error_msg = str(e)
@@ -146,13 +157,14 @@ def process_single_item(chain, item: Dict, language: str) -> Dict:
             except Exception as json_e:
                 print(f"Failed to parse JSON for {item.get('id', 'unknown')}: {json_e}", file=sys.stderr)
         
-        # Merge partial data with defaults to ensure all fields exist
+        if not partial_data.get("is_relevant", False):
+            print(f"Filtered out {item.get('id', 'unknown')} after incomplete model output", file=sys.stderr)
+            return None
         item['AI'] = {**default_ai_fields, **partial_data}
         print(f"Using partial AI data for {item.get('id', 'unknown')}: {list(partial_data.keys())}", file=sys.stderr)
     except Exception as e:
-        # Catch any other exceptions and provide default values
         print(f"Unexpected error for {item.get('id', 'unknown')}: {e}", file=sys.stderr)
-        item['AI'] = default_ai_fields
+        return None
     
     # Final validation to ensure all required fields exist
     for field in default_ai_fields.keys():
@@ -198,15 +210,7 @@ def process_all_items(data: List[Dict], model_name: str, language: str, max_work
                 processed_data[idx] = result
             except Exception as e:
                 print(f"Item at index {idx} generated an exception: {e}", file=sys.stderr)
-                # Add default AI fields to ensure consistency
-                processed_data[idx] = data[idx]
-                processed_data[idx]['AI'] = {
-                    "tldr": "Processing failed",
-                    "motivation": "Processing failed",
-                    "method": "Processing failed",
-                    "result": "Processing failed",
-                    "conclusion": "Processing failed"
-                }
+                processed_data[idx] = None
     
     return processed_data
 

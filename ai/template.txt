@@ -1,4 +1,18 @@
-Please analyze the following abstract of papers. 
+Analyze the following paper abstract and return the required structured fields.
 
-Content:
+Filtering decision:
+- relevance_reason: cite the concrete phrases or facts that establish (or fail to establish) industrial relevance.
+- is_relevant: apply the system criteria strictly. Do not keep a paper merely because it uses an LLM or a recommender-related keyword.
+
+For a retained paper, organize the five analysis fields as follows:
+- tldr: Start with the disclosed company/institution and team; then state the real business scenario, pipeline stage (for example query understanding, recall, coarse ranking, fine ranking, reranking, CTR/CVR, bidding, training, inference, serving, or evaluation), proposed system, and headline result. Use “论文摘要未披露” for missing company/team/stage information.
+- motivation: Explain the concrete production bottleneck, existing solution limitations, scale constraints, and why the problem matters to the business.
+- method: Explain the model/system architecture, input-output flow, training objective, core idea, key modules, and genuine innovations. Separate author claims from your interpretation.
+- result: List offline metrics and online A/B gains separately. Then report model size, training data, training hardware/time, inference hardware, latency, throughput, memory, and cost. For every missing category say “论文摘要未披露”; never estimate values.
+- conclusion: Summarize the problem solved, practical value, limitations/evidence gaps, and what an industrial search/ads/recommendation/LLM team can reuse.
+
+Paper title: {title}
+Authors: {authors}
+Categories: {categories}
+Abstract:
 {content}

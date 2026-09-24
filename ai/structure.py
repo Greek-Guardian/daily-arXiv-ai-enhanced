@@ -2,8 +2,10 @@ from pydantic import BaseModel, Field, field_validator
 import re
 
 class Structure(BaseModel):
-    tldr: str = Field(description="generate a too long; didn't read summary")
-    motivation: str = Field(description="describe the motivation in this paper")
-    method: str = Field(description="method of this paper")
-    result: str = Field(description="result of this paper")
-    conclusion: str = Field(description="conclusion of this paper")
+    is_relevant: bool = Field(description="whether the paper matches the requested industrial scope")
+    relevance_reason: str = Field(description="brief evidence-based reason for keeping or rejecting the paper")
+    tldr: str = Field(description="concise industrial-context executive summary")
+    motivation: str = Field(description="business scenario, pipeline stage, and problem being solved")
+    method: str = Field(description="model architecture, core idea, and technical innovations")
+    result: str = Field(description="offline and online results, model scale, and resource costs")
+    conclusion: str = Field(description="practical value, limitations, and transferable lessons")
