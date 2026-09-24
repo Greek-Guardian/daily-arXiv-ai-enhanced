@@ -8,6 +8,10 @@ on:
     - cron: "30 1 * * *"
   workflow_dispatch:
 
+# The workflow commits generated site files and daily data back to this
+# repository, so the automatically-created GITHUB_TOKEN needs write access.
+permissions:
+  contents: write
 
 jobs:
   build:
@@ -15,7 +19,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v5
     - name: Install dependencies
       run: |
         curl -LsSf https://astral.sh/uv/install.sh | sh
