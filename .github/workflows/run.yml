@@ -5,7 +5,8 @@ name: arXiv-daily-ai-enhanced
 
 on:
   schedule:
-    - cron: "30 1 * * *"
+    # Poll throughout the day. AI is called only for IDs not seen before.
+    - cron: "23 * * * *"
   workflow_dispatch:
     inputs:
       start_date:
@@ -22,6 +23,10 @@ on:
 permissions:
   contents: write
 
+concurrency:
+  group: arxiv-data-writer
+  cancel-in-progress: false
+
 jobs:
   build:
     if: ${{ github.event_name != 'workflow_dispatch' || inputs.start_date == '' }}
@@ -34,23 +39,33 @@ jobs:
       run: |
         curl -LsSf https://astral.sh/uv/install.sh | sh
         uv sync
+
+    - name: Restore incremental state from data branch
+      id: restore_step
+      run: |
+        today=$(date -u "+%Y-%m-%d")
+        language="${{ vars.LANGUAGE }}"
+        mkdir -p /tmp/arxiv-state/history data assets
+        git fetch origin data
+
+        git show "origin/data:data/${today}.jsonl" > /tmp/arxiv-state/existing-raw.jsonl 2>/dev/null || : > /tmp/arxiv-state/existing-raw.jsonl
+        git show "origin/data:data/${today}_AI_enhanced_${language}.jsonl" > /tmp/arxiv-state/existing-enhanced.jsonl 2>/dev/null || : > /tmp/arxiv-state/existing-enhanced.jsonl
+        git show "origin/data:assets/file-list.txt" > assets/file-list.txt 2>/dev/null || : > assets/file-list.txt
+
+        for days_ago in 1 2 3 4 5 6 7; do
+          history_date=$(date -u -d "$today - $days_ago day" "+%Y-%m-%d")
+          git show "origin/data:data/${history_date}.jsonl" > "/tmp/arxiv-state/history/${history_date}.jsonl" 2>/dev/null || true
+        done
+        echo "crawl_date=$today" >> "$GITHUB_OUTPUT"
         
     - name: Crawl arXiv papers
       id: crawl_step
       run: |
         source .venv/bin/activate
-        today=$(date -u "+%Y-%m-%d")
+        today=${{ steps.restore_step.outputs.crawl_date }}
         echo "开始爬取 $today 的arXiv论文... / Starting to crawl $today arXiv papers..."
-        
-        # 检查今日文件是否已存在，如存在则删除 / Check if today's file exists, delete if found
-        if [ -f "data/${today}.jsonl" ]; then
-            echo "🗑️ 发现今日文件已存在，正在删除重新生成... / Found existing today's file, deleting for fresh start..."
-            rm "data/${today}.jsonl"
-            echo "✅ 已删除现有文件：data/${today}.jsonl / Deleted existing file: data/${today}.jsonl"
-        else
-            echo "📝 今日文件不存在，准备新建... / Today's file doesn't exist, ready to create new one..."
-        fi
-        
+
+        rm -f /tmp/arxiv-state/fetched.jsonl
         cd daily_arxiv
         export OPENAI_API_KEY=${{ secrets.OPENAI_API_KEY }}
         export OPENAI_BASE_URL=${{ secrets.OPENAI_BASE_URL }}
@@ -61,61 +76,40 @@ jobs:
         
         # 使用Scrapy爬取
         # Use Scrapy to crawl
-        scrapy crawl arxiv -o ../data/${today}.jsonl
+        scrapy crawl arxiv -o /tmp/arxiv-state/fetched.jsonl
         
         # 检查爬取是否成功 / Check if crawling was successful
-        if [ ! -f "../data/${today}.jsonl" ]; then
+        if [ ! -f "/tmp/arxiv-state/fetched.jsonl" ]; then
             echo "爬取失败，未生成数据文件 / Crawling failed, no data file generated"
             exit 1
         fi
         
-        echo "crawl_date=$today" >> $GITHUB_OUTPUT
         echo "爬取完成 / Crawling completed"
         
-    - name: Check for duplicates
+    - name: Prepare unseen papers
       id: dedup_check
       run: |
         source .venv/bin/activate
-        echo "执行去重检查... / Performing intelligent deduplication check..."
-        
-        cd daily_arxiv
-        # 执行去重检查脚本 / Execute intelligent deduplication check script
-        set +e  # 暂时允许命令失败 / Temporarily allow command failure
-        python daily_arxiv/check_stats.py
-        
-        # 获取退出码 / Get exit code
-        dedup_exit_code=$?
-        set -e  # 恢复严格模式 / Restore strict mode
-        
-        echo "去重检查退出码: $dedup_exit_code / Dedup check exit code: $dedup_exit_code"
-        echo "dedup_exit_code=$dedup_exit_code" >> $GITHUB_OUTPUT
-        
-        case $dedup_exit_code in
-            0)
-                echo "has_new_content=true" >> $GITHUB_OUTPUT
-                ;;
-            1)
-                echo "has_new_content=false" >> $GITHUB_OUTPUT
-                echo "skip_reason=no_new_content" >> $GITHUB_OUTPUT
-                ;;
-            2)
-                echo "has_new_content=false" >> $GITHUB_OUTPUT
-                echo "skip_reason=processing_error" >> $GITHUB_OUTPUT
-                exit 1
-                ;;
-            *)
-                echo "❌ 未知退出码，停止工作流 / Unknown exit code, stop workflow"
-                echo "has_new_content=false" >> $GITHUB_OUTPUT
-                echo "skip_reason=unknown_error" >> $GITHUB_OUTPUT
-                exit 1
-                ;;
-        esac
+        today=${{ steps.restore_step.outputs.crawl_date }}
+        python daily_arxiv/incremental.py prepare \
+          --fetched /tmp/arxiv-state/fetched.jsonl \
+          --existing-raw /tmp/arxiv-state/existing-raw.jsonl \
+          --history /tmp/arxiv-state/history/*.jsonl \
+          --output-raw "data/${today}.jsonl" \
+          --output-new "data/${today}_new.jsonl"
+
+        if [ -s "data/${today}_new.jsonl" ]; then
+          echo "has_new_content=true" >> "$GITHUB_OUTPUT"
+        else
+          echo "has_new_content=false" >> "$GITHUB_OUTPUT"
+          echo "skip_reason=no_new_content" >> "$GITHUB_OUTPUT"
+        fi
         
     - name: AI Enhancement Processing
       if: steps.dedup_check.outputs.has_new_content == 'true'
       run: |
         source .venv/bin/activate
-        today=${{ steps.crawl_step.outputs.crawl_date }}
+        today=${{ steps.restore_step.outputs.crawl_date }}
         echo "开始AI增强处理... / Starting AI enhancement processing..."
         
         cd ai
@@ -124,7 +118,7 @@ jobs:
         export LANGUAGE="${{ vars.LANGUAGE }}"
         export MODEL_NAME="${{ vars.MODEL_NAME }}"
         
-        python enhance.py --data ../data/${today}.jsonl --max_workers 8
+        python enhance.py --data ../data/${today}_new.jsonl --max_workers 8
         
         # 检查AI处理是否成功 / Check if AI processing was successful
         if [ $? -ne 0 ]; then
@@ -132,12 +126,24 @@ jobs:
             exit 1
         fi
         echo "AI增强处理完成 / AI enhancement processing completed"
+
+    - name: Merge AI results with earlier scans
+      if: steps.dedup_check.outputs.has_new_content == 'true'
+      run: |
+        source .venv/bin/activate
+        today=${{ steps.restore_step.outputs.crawl_date }}
+        language="${{ vars.LANGUAGE }}"
+        python daily_arxiv/incremental.py finalize \
+          --existing-enhanced /tmp/arxiv-state/existing-enhanced.jsonl \
+          --new-enhanced "data/${today}_new_AI_enhanced_${language}.jsonl" \
+          --output-enhanced "data/${today}_AI_enhanced_${language}.jsonl"
+        rm -f "data/${today}_new.jsonl" "data/${today}_new_AI_enhanced_${language}.jsonl"
         
     - name: Convert to Markdown
       if: steps.dedup_check.outputs.has_new_content == 'true'
       run: |
         source .venv/bin/activate
-        today=${{ steps.crawl_step.outputs.crawl_date }}
+        today=${{ steps.restore_step.outputs.crawl_date }}
         echo "转换为Markdown格式... / Converting to Markdown format..."
         
         # 设置环境变量 / Set environment variables
@@ -168,7 +174,8 @@ jobs:
       if: steps.dedup_check.outputs.has_new_content == 'true'
       run: |
         echo "更新文件列表... / Updating file list..."
-        ls data/*.jsonl | sed 's|data/||' > assets/file-list.txt
+        { cat assets/file-list.txt; find data -maxdepth 1 -type f -name '*.jsonl' -printf '%f\n'; } | sort -u > /tmp/file-list.txt
+        mv /tmp/file-list.txt assets/file-list.txt
         echo "文件列表更新完成 / File list updated"
 
     - name: Generate password hash and inject into config
@@ -297,7 +304,7 @@ jobs:
       if: steps.dedup_check.outputs.has_new_content == 'true'
       run: |
         echo "准备数据文件... / Preparing data files..."
-        today=${{ steps.crawl_step.outputs.crawl_date }}
+        today=${{ steps.restore_step.outputs.crawl_date }}
         
         # 创建临时目录保存数据文件 / Create temporary directory to save data files
         mkdir -p /tmp/data_files/data
@@ -316,7 +323,7 @@ jobs:
         git config --global user.name "${{ vars.NAME }}"
         
         echo "设置 data 分支... / Setting up data branch..."
-        today=${{ steps.crawl_step.outputs.crawl_date }}
+        today=${{ steps.restore_step.outputs.crawl_date }}
         
         # 在切换分支前，清理工作目录中可能冲突的未跟踪文件
         # Before switching branches, clean untracked files that might conflict
