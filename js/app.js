@@ -21,6 +21,22 @@ let currentFilteredPapers = []; // 当前过滤后的论文列表
 let textSearchQuery = ''; // 实时文本搜索查询
 let previousActiveKeywords = null; // 文本搜索激活时，暂存之前的关键词激活集合
 let previousActiveAuthors = null; // 文本搜索激活时，暂存之前的作者激活集合
+let currentDataFingerprint = '';
+let autoRefreshInProgress = false;
+const AUTO_REFRESH_INTERVAL_MS = 5 * 60 * 1000;
+
+function cacheBustedDataUrl(filePath) {
+  const fiveMinuteBucket = Math.floor(Date.now() / AUTO_REFRESH_INTERVAL_MS);
+  return `${DATA_CONFIG.getDataUrl(filePath)}?v=${fiveMinuteBucket}`;
+}
+
+function fingerprint(text) {
+  let hash = 0;
+  for (let index = 0; index < text.length; index += 1) {
+    hash = ((hash << 5) - hash + text.charCodeAt(index)) | 0;
+  }
+  return `${text.length}:${hash}`;
+}
 
 // 加载用户的关键词设置
 function loadUserKeywords() {
@@ -392,6 +408,14 @@ document.addEventListener('DOMContentLoaded', () => {
       loadPapersByDate(availableDates[0]);
     }
   });
+
+  // Keep an already-open homepage current without forcing a full-page reload.
+  window.setInterval(refreshLatestPapers, AUTO_REFRESH_INTERVAL_MS);
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden) {
+      refreshLatestPapers();
+    }
+  });
 });
 
 async function fetchGitHubStats() {
@@ -726,8 +750,8 @@ function selectLanguageForDate(date, preferredLanguage = null) {
 async function fetchAvailableDates() {
   try {
     // 从 data 分支获取文件列表
-    const fileListUrl = DATA_CONFIG.getDataUrl('assets/file-list.txt');
-    const response = await fetch(fileListUrl);
+    const fileListUrl = cacheBustedDataUrl('assets/file-list.txt');
+    const response = await fetch(fileListUrl, { cache: 'no-store' });
     if (!response.ok) {
       console.error('Error fetching file list:', response.status);
       return [];
@@ -766,6 +790,44 @@ async function fetchAvailableDates() {
   }
 }
 
+async function refreshLatestPapers() {
+  if (autoRefreshInProgress || document.hidden) {
+    return;
+  }
+
+  autoRefreshInProgress = true;
+  try {
+    const previousLatestDate = availableDates[0] || '';
+    const wasViewingLatestDate = currentDate === previousLatestDate;
+    await fetchAvailableDates();
+    const latestDate = availableDates[0] || '';
+
+    if (!latestDate || !wasViewingLatestDate) {
+      return;
+    }
+
+    if (latestDate !== previousLatestDate) {
+      await loadPapersByDate(latestDate);
+      return;
+    }
+
+    const selectedLanguage = selectLanguageForDate(latestDate);
+    const dataUrl = cacheBustedDataUrl(`data/${latestDate}_AI_enhanced_${selectedLanguage}.jsonl`);
+    const response = await fetch(dataUrl, { cache: 'no-store' });
+    if (!response.ok) {
+      return;
+    }
+    const text = await response.text();
+    if (fingerprint(text) !== currentDataFingerprint) {
+      await loadPapersByDate(latestDate);
+    }
+  } catch (error) {
+    console.warn('自动刷新最新论文失败:', error);
+  } finally {
+    autoRefreshInProgress = false;
+  }
+}
+
 function initDatePicker() {
   const datepickerInput = document.getElementById('datepicker');
   
@@ -783,7 +845,9 @@ function initDatePicker() {
   flatpickrInstance = flatpickr(datepickerInput, {
     inline: true,
     dateFormat: "Y-m-d",
-    defaultDate: availableDates[0],
+    defaultDate: currentDate && !currentDate.includes(' to ')
+      ? currentDate
+      : availableDates[0],
     mode: isRangeMode ? 'range' : 'single',
     enable: [
       function(date) {
@@ -857,8 +921,8 @@ async function loadPapersByDate(date) {
   try {
     const selectedLanguage = selectLanguageForDate(date);
     // 从 data 分支获取数据文件
-    const dataUrl = DATA_CONFIG.getDataUrl(`data/${date}_AI_enhanced_${selectedLanguage}.jsonl`);
-    const response = await fetch(dataUrl);
+    const dataUrl = cacheBustedDataUrl(`data/${date}_AI_enhanced_${selectedLanguage}.jsonl`);
+    const response = await fetch(dataUrl, { cache: 'no-store' });
     // 如果文件不存在（例如返回 404），在论文展示区域提示没有论文
     if (!response.ok) {
       if (response.status === 404) {
@@ -885,6 +949,7 @@ async function loadPapersByDate(date) {
       renderCategoryFilter({ sortedCategories: [], categoryCounts: {} });
       return;
     }
+    currentDataFingerprint = fingerprint(text);
     
     paperData = parseJsonlData(text, date);
 

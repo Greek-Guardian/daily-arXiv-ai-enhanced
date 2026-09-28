@@ -5,8 +5,9 @@ name: arXiv-daily-ai-enhanced
 
 on:
   schedule:
-    # Poll throughout the day. AI is called only for IDs not seen before.
-    - cron: "23 * * * *"
+    # Two off-peak chances per hour make GitHub's best-effort scheduler less
+    # likely to miss an arXiv announcement. AI still runs only for unseen IDs.
+    - cron: "11,41 * * * *"
   workflow_dispatch:
     inputs:
       start_date:
