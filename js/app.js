@@ -830,6 +830,7 @@ async function refreshLatestPapers() {
 
 function initDatePicker() {
   const datepickerInput = document.getElementById('datepicker');
+  const today = formatDateForAPI(new Date());
   
   if (flatpickrInstance) {
     flatpickrInstance.destroy();
@@ -855,8 +856,9 @@ function initDatePicker() {
         const dateStr = date.getFullYear() + "-" +
                         String(date.getMonth() + 1).padStart(2, '0') + "-" +
                         String(date.getDate()).padStart(2, '0');
-        // 在 availableDates[0] 之后的日期全部返回 false，否则返回 true
-        return dateStr <= availableDates[0];
+        // Allow every past date including today. A date without published
+        // data shows a clear pending/empty state instead of being unclickable.
+        return dateStr <= today;
       }
     ],
     onChange: function(selectedDates, dateStr) {
@@ -926,9 +928,13 @@ async function loadPapersByDate(date) {
     // 如果文件不存在（例如返回 404），在论文展示区域提示没有论文
     if (!response.ok) {
       if (response.status === 404) {
+        const today = formatDateForAPI(new Date());
+        const isToday = date === today;
         container.innerHTML = `
           <div class="loading-container">
-            <p>No papers found for this date.</p>
+            <p>${isToday
+              ? 'arXiv 尚未公开今天的论文批次，或本站正在处理；发布后会自动显示。'
+              : 'No papers found for this date.'}</p>
           </div>
         `;
         paperData = {};

@@ -7,6 +7,12 @@ Set decision="keep" only when the supplied metadata or abstract contains concret
 2. Any practically useful LLM systems paper with measurable experiments: model architecture, pretraining, post-training, alignment, distillation, evaluation, inference, serving, acceleration, compression, routing, memory, RAG, reliability, or agent infrastructure. Company evidence is preferred but not mandatory; use company=null when it is absent.
 3. A company-authored technical report with clear product, deployment, efficiency, scale, or experimental relevance.
 
+An industrial recommender paper that directly addresses retrieval, pre-rank,
+fine-rank, ranking, or the end-to-end recommendation cascade is always in
+scope. In particular, unified cascade architectures with disclosed online
+business gains or serving improvements must be kept, even when affiliations
+are missing from the arXiv HTML metadata.
+
 Reject papers that merely apply an LLM to an unrelated vertical without contributing to LLM systems, or only mention the target topics as background. Reject unrelated finance, healthcare, EDA, science, robotics, and generic application papers unless a real production workflow is explicitly evidenced. Prefer recall over precision inside search/ads/recommendation and core LLM systems because the website provides company and evidence-level filters.
 
 Evidence levels:

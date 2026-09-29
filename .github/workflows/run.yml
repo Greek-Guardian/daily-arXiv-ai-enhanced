@@ -18,6 +18,10 @@ on:
         description: "补跑结束日期（YYYY-MM-DD）；留空则只跑开始日期，单次最多14天"
         required: false
         type: string
+      paper_id:
+        description: "仅重新分析一篇已抓取论文（例如 2609.28589）；不会重跑整天"
+        required: false
+        type: string
 
 # The workflow commits generated site files and daily data back to this
 # repository, so the automatically-created GITHUB_TOKEN needs write access.
@@ -30,7 +34,7 @@ concurrency:
 
 jobs:
   build:
-    if: ${{ github.event_name != 'workflow_dispatch' || inputs.start_date == '' }}
+    if: ${{ github.event_name != 'workflow_dispatch' || (inputs.start_date == '' && inputs.paper_id == '') }}
 
     runs-on: ubuntu-latest
 
@@ -395,7 +399,7 @@ jobs:
         done
 
   backfill:
-    if: ${{ inputs.start_date != '' }}
+    if: ${{ inputs.start_date != '' && inputs.paper_id == '' }}
     runs-on: ubuntu-latest
 
     steps:
@@ -487,5 +491,102 @@ jobs:
           echo "没有新的补跑结果需要提交"
         else
           git commit -m "backfill: ${START_DATE} to ${end_date} arXiv papers"
+          git push origin data
+        fi
+
+  reprocess-paper:
+    if: ${{ inputs.paper_id != '' }}
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v5
+
+    - name: Install dependencies
+      run: |
+        curl -LsSf https://astral.sh/uv/install.sh | sh
+        uv sync
+
+    - name: Locate paper in raw data
+      id: locate
+      env:
+        PAPER_ID: ${{ inputs.paper_id }}
+        LANGUAGE: ${{ vars.LANGUAGE }}
+      run: |
+        source .venv/bin/activate
+        if ! [[ "$PAPER_ID" =~ ^[0-9]{4}\.[0-9]{4,5}$ ]]; then
+          echo "论文 ID 格式错误：$PAPER_ID"
+          exit 1
+        fi
+
+        git fetch origin data
+        mkdir -p /tmp/reprocess data
+        found_date=""
+        while IFS= read -r filename; do
+          candidate_date="${filename%.jsonl}"
+          git show "origin/data:data/${filename}" \
+            | jq -c --arg id "$PAPER_ID" 'select(.id == $id)' \
+            > /tmp/reprocess/paper.jsonl
+          if [ -s /tmp/reprocess/paper.jsonl ]; then
+            found_date="$candidate_date"
+            break
+          fi
+        done < <(git ls-tree --name-only origin/data:data | grep -E '^[0-9]{4}-[0-9]{2}-[0-9]{2}\.jsonl$' | sort -r)
+
+        if [ -z "$found_date" ]; then
+          echo "原始数据中找不到论文：$PAPER_ID"
+          exit 1
+        fi
+
+        git show "origin/data:data/${found_date}_AI_enhanced_${LANGUAGE}.jsonl" \
+          > /tmp/reprocess/existing-enhanced.jsonl 2>/dev/null \
+          || : > /tmp/reprocess/existing-enhanced.jsonl
+        cp /tmp/reprocess/paper.jsonl "data/${found_date}_retry.jsonl"
+        echo "source_date=$found_date" >> "$GITHUB_OUTPUT"
+        echo "找到 $PAPER_ID，所属数据日期：$found_date"
+
+    - name: Re-run AI for this paper only
+      env:
+        OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        OPENAI_BASE_URL: ${{ secrets.OPENAI_BASE_URL }}
+        TOKEN_GITHUB: ${{ secrets.TOKEN_GITHUB }}
+        LANGUAGE: ${{ vars.LANGUAGE }}
+        MODEL_NAME: ${{ vars.MODEL_NAME }}
+      run: |
+        source .venv/bin/activate
+        source_date=${{ steps.locate.outputs.source_date }}
+        (cd ai && python enhance.py --data "../data/${source_date}_retry.jsonl" --max_workers 1)
+        result="data/${source_date}_retry_AI_enhanced_${LANGUAGE}.jsonl"
+        if [ ! -s "$result" ]; then
+          echo "模型仍未保留该论文；请查看 AI 日志中的拒绝或错误原因"
+          exit 1
+        fi
+
+        python daily_arxiv/incremental.py finalize \
+          --existing-enhanced /tmp/reprocess/existing-enhanced.jsonl \
+          --new-enhanced "$result" \
+          --output-enhanced "data/${source_date}_AI_enhanced_${LANGUAGE}.jsonl"
+        rm -f "data/${source_date}_retry.jsonl" "$result"
+        (cd to_md && python convert.py --data "../data/${source_date}_AI_enhanced_${LANGUAGE}.jsonl")
+
+    - name: Publish corrected paper data
+      env:
+        SOURCE_DATE: ${{ steps.locate.outputs.source_date }}
+        LANGUAGE: ${{ vars.LANGUAGE }}
+      run: |
+        git config --global user.email "${{ vars.EMAIL }}"
+        git config --global user.name "${{ vars.NAME }}"
+        mkdir -p /tmp/reprocess/publish
+        cp "data/${SOURCE_DATE}_AI_enhanced_${LANGUAGE}.jsonl" /tmp/reprocess/publish/
+        cp "data/${SOURCE_DATE}.md" /tmp/reprocess/publish/
+
+        rm -f data/*.jsonl data/*.md
+        git checkout -B data origin/data
+        cp /tmp/reprocess/publish/* data/
+        find data -maxdepth 1 -type f -name '*.jsonl' -printf '%f\n' | sort > assets/file-list.txt
+        git add data assets/file-list.txt
+        if git diff --staged --quiet; then
+          echo "该论文已经存在，无需发布"
+        else
+          git commit -m "fix: reprocess paper ${{ inputs.paper_id }}"
           git push origin data
         fi
